@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Focus player</title>
+<style>html,body{margin:0;background:#111;height:100%;overflow:hidden}#player{width:100%;height:100%}</style>
+</head>
+<body>
+<!--
+  Music player for the Focus desktop app.
+  The app shows this page in a hidden frame and sends it commands, so YouTube
+  sees a normal website instead of the app's local address.
+  Commands in:  { focusPlayer: "load", id, list } | "play" | "pause" | "next" | "stop"
+  Updates out:  { focusPlayer: "state", ready, playing, title, left, isList } | { focusPlayer: "error", code }
+-->
+<div id="player"></div>
+<script>
+  let player = null;
+  let apiReady = false;
+  let pending = null;
+  let isList = false;
+  let parentOrigin = "*";
+
+  const send = (msg) => { try { parent.postMessage(Object.assign({ focusPlayer: "" }, msg), parentOrigin); } catch (_) {} };
+
+  function state() {
+    let title = "", left = 0, playing = false;
+    try {
+      const d = player.getVideoData();
+      title = (d && d.title) || "";
+      left = Math.max(0, player.getDuration() - player.getCurrentTime());
+      playing = player.getPlayerState() === YT.PlayerState.PLAYING;
+    } catch (_) {}
+    send({ focusPlayer: "state", ready: true, playing, title, left, isList });
+  }
+
+  function load(id, list) {
+    if (!apiReady) { pending = { id, list }; return; }
+    isList = Boolean(list);
+    const vars = { autoplay: 1, playsinline: 1, rel: 0, origin: location.origin };
+    if (list) { vars.listType = "playlist"; vars.list = list; }
+    if (player) { try { player.destroy(); } catch (_) {} }
+    document.body.innerHTML = '<div id="player"></div>';
+    player = new YT.Player("player", {
+      width: "100%", height: "100%",
+      videoId: id || undefined,
+      playerVars: vars,
+      events: {
+        onReady: (e) => { e.target.playVideo(); state(); },
+        onStateChange: state,
+        onError: (e) => send({ focusPlayer: "error", code: e.data }),
+      },
+    });
+  }
+
+  window.onYouTubeIframeAPIReady = () => {
+    apiReady = true;
+    if (pending) { load(pending.id, pending.list); pending = null; }
+  };
+
+  window.addEventListener("message", (e) => {
+    const m = e.data;
+    if (!m || typeof m.focusPlayer !== "string") return;
+    parentOrigin = e.origin && e.origin !== "null" ? e.origin : "*";
+    if (m.focusPlayer === "load") load(m.id || null, m.list || null);
+    else if (!player) return;
+    else if (m.focusPlayer === "play") player.playVideo();
+    else if (m.focusPlayer === "pause") player.pauseVideo();
+    else if (m.focusPlayer === "next") player.nextVideo();
+    else if (m.focusPlayer === "stop") { try { player.stopVideo(); } catch (_) {} }
+  });
+
+  setInterval(() => { if (player) state(); }, 1000);
+  send({ focusPlayer: "hello" });
+</script>
+<script src="https://www.youtube.com/iframe_api"></script>
+</body>
+</html>
