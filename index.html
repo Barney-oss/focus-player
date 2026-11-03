@@ -13,7 +13,8 @@
   The app shows this page in a hidden frame and sends it commands, so YouTube
   sees a normal website instead of the app's local address.
   Commands in:  { focusPlayer: "load", id, list } | "play" | "pause" | "next" | "stop"
-  Updates out:  { focusPlayer: "state", ready, playing, title, left, isList } | { focusPlayer: "error", code }
+  Updates out:  { focusPlayer: "state", ready, playing, title, left, isList, ytState } | { focusPlayer: "error", code }
+  Error codes are YouTube's own (2, 5, 100, 101, 150, 153), or "api" when YouTube's player script can't load.
 -->
 <div id="player"></div>
 <script>
@@ -26,14 +27,15 @@
   const send = (msg) => { try { parent.postMessage(Object.assign({ focusPlayer: "" }, msg), parentOrigin); } catch (_) {} };
 
   function state() {
-    let title = "", left = 0, playing = false;
+    let title = "", left = 0, playing = false, ytState = null;
     try {
       const d = player.getVideoData();
       title = (d && d.title) || "";
       left = Math.max(0, player.getDuration() - player.getCurrentTime());
-      playing = player.getPlayerState() === YT.PlayerState.PLAYING;
+      ytState = player.getPlayerState();
+      playing = ytState === YT.PlayerState.PLAYING;
     } catch (_) {}
-    send({ focusPlayer: "state", ready: true, playing, title, left, isList });
+    send({ focusPlayer: "state", ready: true, playing, title, left, isList, ytState });
   }
 
   function load(id, list) {
@@ -75,6 +77,6 @@
   setInterval(() => { if (player) state(); }, 1000);
   send({ focusPlayer: "hello" });
 </script>
-<script src="https://www.youtube.com/iframe_api"></script>
+<script src="https://www.youtube.com/iframe_api" onerror="send({ focusPlayer: 'error', code: 'api' })"></script>
 </body>
 </html>
